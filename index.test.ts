@@ -1,4 +1,4 @@
-import { Rover, Plateau, MarsRoverMission } from "./index";
+import { Rover, Plateau, MarsRoverMission, InputError } from "./index";
 
 describe("Rover", () => {
   let plateau: Plateau;
@@ -248,6 +248,10 @@ describe("Plateau", () => {
     expect(plateau.hasObstacle(1, 3)).toBe(true);
     expect(plateau.hasObstacle(4, 0)).toBe(true);
     expect(plateau.hasObstacle(3, 1)).toBe(false);
+    expect(plateau.getObstacles()).toEqual([
+      { x: 1, y: 3 },
+      { x: 4, y: 0 },
+    ]);
   });
 });
 
@@ -296,6 +300,58 @@ describe("MarsRoverMission", () => {
     mission.executeRoverCommands(5, "M");
     expect(mission.getRoverPositions()).toEqual(["0 0 N"]);
   });
+
+  describe("trail", () => {
+    it("should start with each rover's landing square", () => {
+      const mission = new MarsRoverMission(5, 5);
+      mission.addRover(new Rover(1, 2, "N"));
+      mission.addRover(new Rover(3, 3, "E"));
+      expect(mission.getTrail()).toEqual([
+        { x: 1, y: 2 },
+        { x: 3, y: 3 },
+      ]);
+    });
+
+    it("should record squares in the order rovers enter them", () => {
+      const mission = new MarsRoverMission(5, 5);
+      mission.addRover(new Rover(0, 0, "N"));
+      mission.executeRoverCommands(0, "MRM");
+      mission.addRover(new Rover(5, 5, "S"));
+      mission.executeRoverCommands(1, "M");
+      expect(mission.getTrail()).toEqual([
+        { x: 0, y: 0 },
+        { x: 0, y: 1 },
+        { x: 1, y: 1 },
+        { x: 5, y: 5 },
+        { x: 5, y: 4 },
+      ]);
+    });
+
+    it("should include revisits so playback can follow the rover", () => {
+      const mission = new MarsRoverMission(5, 5);
+      mission.addRover(new Rover(0, 0, "N"));
+      mission.executeRoverCommands(0, "MRRM");
+      expect(mission.getTrail()).toEqual([
+        { x: 0, y: 0 },
+        { x: 0, y: 1 },
+        { x: 0, y: 0 },
+      ]);
+    });
+
+    it("should not record moves blocked by the edge or an obstacle", () => {
+      const mission = new MarsRoverMission(5, 5, [{ x: 1, y: 0 }]);
+      mission.addRover(new Rover(0, 0, "S"));
+      mission.executeRoverCommands(0, "MLM");
+      expect(mission.getTrail()).toEqual([{ x: 0, y: 0 }]);
+    });
+
+    it("should not be affected by mutating the returned trail", () => {
+      const mission = new MarsRoverMission(5, 5);
+      mission.addRover(new Rover(0, 0, "N"));
+      mission.getTrail()[0].x = 3;
+      expect(mission.getTrail()).toEqual([{ x: 0, y: 0 }]);
+    });
+  });
 });
 
 describe("MarsRoverMission.parseInput", () => {
@@ -309,6 +365,15 @@ MMRMMRMRRM`;
     const mission = MarsRoverMission.parseInput(input);
     expect(mission.getRoverOutput()).toBe(`1 3 N
 5 1 E`);
+  });
+
+  it("should accept Windows line endings", () => {
+    const mission = MarsRoverMission.parseInput("5 5\r\nO 1 3\r\n1 2 N\r\nMM\r\n");
+    expect(mission.getRoverOutput()).toBe("1 2 N O");
+  });
+
+  it("should throw InputError for malformed input", () => {
+    expect(() => MarsRoverMission.parseInput("nonsense")).toThrow(InputError);
   });
 
   it("should parse single rover", () => {
